@@ -37,6 +37,7 @@ def generate_training_pairs(corpus:list,vocab,max_window_size : int = 5):
                 # We don't want to pair the target word with itself
                 if i != j:
                     context_id = filtered_word_ids[j]
-                    
-                    # Yield the pair, freezing the function until the next call!
+                    # skip-gram model, we need to pair j context words with one target word
+                    #if u are gonna make a cbow model, reverse this logic 
+           
                     yield (target_id, context_id)
