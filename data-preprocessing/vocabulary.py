@@ -32,7 +32,7 @@ class VocabManager:
         self.unigram_table = []
 
 
-    def build_vocab(self, tokens: list):
+    def build_vocab(self, corpus: list):
                  
         '''
          our tasks are 
@@ -40,7 +40,13 @@ class VocabManager:
          2. prune words below min_count 
          3. build word_to_id and id_to_word         
         '''
-        raw_counts = Counter(tokens)
+        raw_counts = Counter()
+        self.total_words = 0
+
+        for sentence in corpus:
+            raw_counts.update(sentence)
+            self.total_words += len(sentence)
+
 
         current_id = 0
 
@@ -55,7 +61,7 @@ class VocabManager:
                 self.word_to_id[word] = current_id
                 self.id_to_word[current_id] = word
 
-                self.total_words+=1
+                
                 current_id+=1
 
 
