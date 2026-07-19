@@ -111,7 +111,7 @@ def execute_training(
 if __name__ == "__main__":
 
     mined_corpus, vocab = run_data_pipeline(
-        raw_text=raw_text,
+        raw_text=,
         phraser_thresholds=[100, 50],
         vocab_min_count=5
     )
