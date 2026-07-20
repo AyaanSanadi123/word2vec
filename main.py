@@ -1,4 +1,7 @@
 import numpy as np
+import json
+import os
+from datetime import datetime
 # import layer-1
 from data_preprocessing.tokenizer import TextTokenizer
 from data_preprocessing.phraser import PhraseMiner
@@ -72,7 +75,34 @@ we have 3 loops
 
 '''
 
+def log_experiment(hyperparameters: dict, best_accuracy: float, final_loss: float, filepath: str = "experiments.json"):
+    """Appends the results of a training run to a JSON ledger."""
+    
+    # 1. Build the data dictionary for this specific run
+    entry = {
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "hyperparameters": hyperparameters,
+        "metrics": {
+            "best_accuracy_percent": best_accuracy,
+            "final_epoch_loss": final_loss
+        },
+        "artifact_path": "models/best_target_matrix.npy"
+    }
 
+    # 2. Safely load existing history, or create a new list if the file doesn't exist
+    if os.path.exists(filepath):
+        with open(filepath, "r") as f:
+            try:
+                history = json.load(f)
+            except json.JSONDecodeError:
+                history = [] # In case the file is empty or corrupted
+    else:
+        history = []
+
+    # 3. Append the new run and save it back to the disk
+    history.append(entry)
+    with open(filepath, "w") as f:
+        json.dump(history, f, indent=4)
 def execute_training(
         mined_corpus:list,
         vocab:VocabManager,
@@ -94,7 +124,7 @@ def execute_training(
     print("\n--- Phase 3: The Training Engine ---")
     # setting up the auto saving
     # --- Artifact Manager Setup ---
-    best_accuracy = 0.0
+    best_accuracy = -1.0
     patience_counter = 0
     patience_limit = 3  
 
@@ -130,7 +160,7 @@ def execute_training(
             evaluator = Word2VecEvaluator(matrices, vocab) 
             
             # 2. Run the test set (assuming it's in the root folder)
-            epoch_accuracy=evaluator.evaluate_benchmark("questions-words.txt")
+            epoch_accuracy=evaluator.evaluate_benchmark("testing//questions-words.txt")
             if epoch_accuracy > best_accuracy:
                 # The model got smarter!
                 best_accuracy = epoch_accuracy
@@ -138,6 +168,7 @@ def execute_training(
                 
                 # Overwrite the previous best matrix V
                 # (Assuming matrices has a target_matrix attribute)
+                os.makedirs("models", exist_ok=True)
                 np.save("models//best_target_matrix.npy", matrices.target_matrix)
                 print(f"🌟 New best model saved! Accuracy: {best_accuracy:.2f}%")
                 
@@ -152,18 +183,33 @@ def execute_training(
                     print(f"Keeping the best matrix with {best_accuracy:.2f}% accuracy.")
                     break # Kills the training loop instantly
             
-
+    print("\n📝 Logging experiment results to experiments.json...")
+    
+    # Package the hyperparameters into a clean dictionary
+    run_configs = {
+        "embed_dim": embed_dim,
+        "epochs": epochs,
+        "learning_rate": learning_rate,
+        "negative_k": negative_k,
+        "window_size": window_size
+    }
+    
+    # Send it to the ledger (we use avg_loss from the final epoch)
+    log_experiment(run_configs, best_accuracy, avg_loss)               
     print("\nTraining Complete! 🚀")
     return matrices 
 
 
 
 if __name__ == "__main__":
+    with open("text8//text8", "r") as f:
+        raw_text = f.read()
+
+    
 
     mined_corpus, vocab = run_data_pipeline(
-        raw_text=,
-        phraser_thresholds=[100, 50],
-        vocab_min_count=5
+        raw_text=raw_text,
+        
     )
     
     # 3. Run Phase 2 & 3
