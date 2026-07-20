@@ -1,5 +1,5 @@
 import numpy as np
-from sigmoid import sigmoid
+from training_engine.sigmoid import sigmoid
 def train_step(target_id : int,context_id:int,negative_sample:list,matrices,learning_rate:float):
     # 1. pull the target and context vectors
     target_vector = matrices.get_target_vector(target_id)

@@ -1,0 +1,17 @@
+[
+    {
+        "timestamp": "2026-07-20 21:56:22",
+        "hyperparameters": {
+            "embed_dim": 300,
+            "epochs": 5,
+            "learning_rate": 0.025,
+            "negative_k": 5,
+            "window_size": 5
+        },
+        "metrics": {
+            "best_accuracy_percent": 11.569875513997633,
+            "final_epoch_loss": 2.082044861605885
+        },
+        "artifact_path": "models/best_target_matrix.npy"
+    }
+]

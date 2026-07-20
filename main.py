@@ -157,7 +157,7 @@ def execute_training(
             print("Running Benchmark Evaluation...")
             
             # 1. Instantiate the evaluator with the half-trained matrices
-            evaluator = Word2VecEvaluator(matrices, vocab) 
+            evaluator = Word2VecEvaluator(matrices.target_matrix, vocab) 
             
             # 2. Run the test set (assuming it's in the root folder)
             epoch_accuracy=evaluator.evaluate_benchmark("testing//questions-words.txt")
