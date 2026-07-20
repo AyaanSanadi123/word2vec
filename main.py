@@ -12,7 +12,7 @@ from embedding_layer.matrices import Word2VecMatrices
 from training_engine.sigmoid import sigmoid
 from training_engine.sampler import get_negative_samples
 from training_engine.graident import train_step
-
+from training_engine.schedular import LearningRateScheduler
 
 """
 LAYER-1 : the goal here is to input raw text and output a mathematically optimised series of data-
@@ -71,7 +71,7 @@ we have 3 loops
 
 
 def execute_training(
-        mined_corpused:list,
+        mined_corpus:list,
         vocab:VocabManager,
         embed_dim : int = 300,
         epochs : int = 5,
@@ -79,6 +79,11 @@ def execute_training(
         negative_k:int = 5,
         window_size: int = 5
 ):
+    total_words = sum(len(sentence) for sentence in mined_corpus)
+    estimated_total_pairs = total_words * window_size * epochs
+    scheduler = LearningRateScheduler(initial_lr=learning_rate, total_steps=estimated_total_pairs)
+    total_pair_count = 0
+    current_lr = learning_rate
     print("\n--- Phase 2: Memory Allocation ---")
     vocab_size = len(vocab.word_to_id)
     matrices = Word2VecMatrices(vocab_size,embed_dim)
@@ -88,20 +93,29 @@ def execute_training(
     # loop - 1 (epochs)
     for epoch in range(epochs):
         print(f"Epoch {epoch + 1}/{epochs} starting...")
-
+        epoch_loss = 0.0
+        epoch_pair_count = 0
         # pair generator 
-        pair_generator = generate_training_pairs(mined_corpused,vocab,window_size)
+        pair_generator = generate_training_pairs(mined_corpus,vocab,window_size)
 
-        pair_count = 0
+        
         for target_id,context_id in pair_generator:
-
+            if total_pair_count % 10000 == 0:
+                current_lr = scheduler.get_rate(total_pair_count)
             # get the negative sample 
             negative_samples= get_negative_samples(vocab.unigram_table,negative_k)
 
             # start the maths 
-            train_step(target_id,context_id,negative_samples,matrices,learning_rate)
+            step_loss = train_step(target_id,context_id,negative_samples,matrices,current_lr)
 
-            pair_count += 1
+            # add up the loss 
+            epoch_loss += step_loss
+            total_pair_count += 1
+            epoch_pair_count += 1
+        if epoch_pair_count > 0:
+            avg_loss = epoch_loss / epoch_pair_count
+            print(f"Epoch {epoch + 1} Completed | Average Loss: {avg_loss:.4f} | Final LR: {current_lr:.6f}")
+            
 
     print("\nTraining Complete! 🚀")
     return matrices 
