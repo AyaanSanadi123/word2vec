@@ -68,4 +68,43 @@ class Word2VecEvaluator:
             ignore_words={word_a,word_b,word_c},
             top_n=top_n
         )
+    def evaluate_benchmark(self,filepath:str) -> float:
+        correct = 0
+        total_evaluated = 0
+        total_skipped = 0
 
+        print(f"\nScanning benchmark file: {filepath}...")
+        with open(filepath, 'r') as f:
+            for line in f:
+                if line.startswith(':'):
+                    continue
+                # 2. Parse the line into the 4 words
+                words = line.strip().lower().split()
+                if len(words) != 4:
+                    continue
+                word_a, word_b, word_c, expected_word = words
+                # If any of the 4 words were dropped by your VocabManager, 
+                # we mathematically cannot test this analogy. Skip it.
+                if not all(w in self.vocab.word_to_id for w in [word_a, word_b, word_c, expected_word]):
+                    total_skipped += 1
+                    continue
+                total_evaluated += 1
+                # run the analogy 
+                result = self.analogy(word_a, word_b, word_c, top_n=1)
+                if isinstance(result, list) and len(result) > 0:
+                    predicted_word = result[0][0]
+                    if predicted_word == expected_word:
+                        correct += 1
+
+            if total_evaluated == 0:
+                print("Warning: All benchmark words were Out-Of-Vocabulary. Score: 0.0%")
+                return 0.0
+            
+            accuracy = (correct / total_evaluated) * 100
+        
+            print(f"--- Benchmark Results ---")
+            print(f"Accuracy:  {accuracy:.2f}% ({correct}/{total_evaluated})")
+            print(f"Skipped:   {total_skipped} questions (OOV)")
+            print(f"-------------------------\n")
+        
+            return accuracy

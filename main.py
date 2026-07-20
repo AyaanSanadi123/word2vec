@@ -1,4 +1,5 @@
-# import layer-1 
+import numpy as np
+# import layer-1
 from data_preprocessing.tokenizer import TextTokenizer
 from data_preprocessing.phraser import PhraseMiner
 from data_preprocessing.vocabulary import VocabManager
@@ -14,6 +15,8 @@ from training_engine.sampler import get_negative_samples
 from training_engine.graident import train_step
 from training_engine.schedular import LearningRateScheduler
 
+# testing layer 
+from testing.instrinsic_evaluator import Word2VecEvaluator
 """
 LAYER-1 : the goal here is to input raw text and output a mathematically optimised series of data-
 structures that represent the cleaned and pruned data.
@@ -89,6 +92,11 @@ def execute_training(
     matrices = Word2VecMatrices(vocab_size,embed_dim)
 
     print("\n--- Phase 3: The Training Engine ---")
+    # setting up the auto saving
+    # --- Artifact Manager Setup ---
+    best_accuracy = 0.0
+    patience_counter = 0
+    patience_limit = 3  
 
     # loop - 1 (epochs)
     for epoch in range(epochs):
@@ -115,6 +123,34 @@ def execute_training(
         if epoch_pair_count > 0:
             avg_loss = epoch_loss / epoch_pair_count
             print(f"Epoch {epoch + 1} Completed | Average Loss: {avg_loss:.4f} | Final LR: {current_lr:.6f}")
+            # --- THE NEW INJECTION: OVERFIT DETECTION ---
+            print("Running Benchmark Evaluation...")
+            
+            # 1. Instantiate the evaluator with the half-trained matrices
+            evaluator = Word2VecEvaluator(matrices, vocab) 
+            
+            # 2. Run the test set (assuming it's in the root folder)
+            epoch_accuracy=evaluator.evaluate_benchmark("questions-words.txt")
+            if epoch_accuracy > best_accuracy:
+                # The model got smarter!
+                best_accuracy = epoch_accuracy
+                patience_counter = 0  # Reset the patience counter
+                
+                # Overwrite the previous best matrix V
+                # (Assuming matrices has a target_matrix attribute)
+                np.save("models//best_target_matrix.npy", matrices.target_matrix)
+                print(f"🌟 New best model saved! Accuracy: {best_accuracy:.2f}%")
+                
+            else:
+                # The model did not improve.
+                patience_counter += 1
+                print(f"⚠️ No improvement. Patience: {patience_counter}/{patience_limit}")
+                
+                # Check for Early Stopping
+                if patience_counter >= patience_limit:
+                    print(f"\n🛑 Early stopping triggered! Model hasn't improved in {patience_limit} epochs.")
+                    print(f"Keeping the best matrix with {best_accuracy:.2f}% accuracy.")
+                    break # Kills the training loop instantly
             
 
     print("\nTraining Complete! 🚀")
