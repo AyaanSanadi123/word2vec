@@ -20,6 +20,14 @@ from training_engine.schedular import LearningRateScheduler
 
 # testing layer 
 from testing.instrinsic_evaluator import Word2VecEvaluator
+
+
+
+# layer-1 for c
+from data_preprocessing.c_helper import encode_corpus,dict_to_c_array
+
+
+
 """
 LAYER-1 : the goal here is to input raw text and output a mathematically optimised series of data-
 structures that represent the cleaned and pruned data.
@@ -31,7 +39,7 @@ of dropping frequent words, builds the 10,000,000 slot array
 
 """
 def run_data_pipeline(raw_text : str):
-    print("--- Phase 1: Data Pipeline ---")\
+    print("--- Phase 1: Data Pipeline ---")
     
     # tokenize the text 
     print("1. Tokenizing text...")
@@ -54,10 +62,18 @@ def run_data_pipeline(raw_text : str):
     vocab.build_vocab(mined_corpus)
     vocab.calculate_subsampling()
     vocab.build_unigram_table()
+
+    # phase-4, creating the 1D array for C
+    encoded_corpus = encode_corpus(mined_corpus,vocab)
+    c_discard_probs = dict_to_c_array(vocab.discard_probs, vocab.word_to_id)
+    
+
+    # delete the mined_corpus, we have id_to_word to convert it back 
+    del mined_corpus
     
     print(f"Phase 1 Complete. Pruned Vocabulary Size: {len(vocab.word_to_id)}")
     
-    return mined_corpus, vocab
+    return encoded_corpus,c_discard_probs,vocab
 
 
 # phase-2 & 3 combined 
