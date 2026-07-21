@@ -51,16 +51,61 @@ float current_lr,float* discard_probs
 
                 // skip gram negative sampling 
                 
+                // clear the entire target_update for a fresh batch of values
+                for(int d=0;d<embed_size;d++)target_update[d] = 0.0f;
+                
+                // now run a loop, 1 positive pair and K negative pairs 
+                for(int n = 0; n<= num_negatives;n++){
+                    int current_context_id;
+                    int label;
 
-               
+                    if(n == 0){
+                        // this is the positive pair 
+                        current_context_id = context_id;
+                        label = 1;
+                    }else{
+                        int rand_id = rand() % unigram_size;
+                        // get a random index from the unigram table
+                        current_context_id = unigram_table[rand_id];
+
+                        if (current_context_id == word_id) continue; // make sure the negative word is not the target word itself
+                        label = 0;            
+                    }
+
+                    // now time to get the vectors from the matrices 
+                    // because its not a 2D array anymore,
+                    // its a 1D flat array, so to find the vector in the matrix do, row_id * embed_size 
+                    //this gives us the starting point of the vector 
+                    // store that in a pointer 
+                    float * v_target = &target_matrix[word_id * embed_size];
+                    float* u_context = &context_matrix[current_context_id * embed_size];
+                    // now uk where to start updating the values 
+                    // forward pass (dot product)
+                    float dot_product = 0.0f;
+                    for(int d = 0; d<embed_size;d++){
+                        dot_product+= v_target[d]*u_context[d];
+                    }
+                    // apply sigmoid
+                    float z = fast_sigmoid(dot_product);
+                    // get the graident value
+                    float gradient = (label - z) * current_lr;
+
+                    for(int d = 0;d<embed_size;d++){
+                        target_update[d] += gradient * u_context[d]; // accumilate the values 
+                        // update the context vector right away 
+                        u_context[d] +=  gradient * v_target[d];
+                    }
+                }
+               // update the target vector 
+               // we are redeclaring because the previous one was local to the for loop
+               float* v_target = & target_matrix[word_id * embed_size];
+               for (int d = 0; d < embed_size; d++) {
+                    v_target[d] += target_update[d];
+                }
+
                 
             }
-       }
-
-
-       
-       
-       
+       }   
     }
-    
+    free(target_update);
 }
