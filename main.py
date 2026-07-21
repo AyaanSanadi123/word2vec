@@ -167,8 +167,16 @@ def execute_training(
                 patience_counter = 0  # Reset the patience counter
                 
                 # Overwrite the previous best matrix V
-                # (Assuming matrices has a target_matrix attribute)
+               
                 os.makedirs("models", exist_ok=True)
+
+
+                with open("models/word_to_id.json", "w") as f:
+                    json.dump(vocab.word_to_id, f)
+                
+                # Save id -> word (for decoding vectors back into text)
+                with open("models/id_to_word.json", "w") as f:
+                    json.dump(vocab.id_to_word, f)
                 np.save("models//best_target_matrix.npy", matrices.target_matrix)
                 print(f"🌟 New best model saved! Accuracy: {best_accuracy:.2f}%")
                 
