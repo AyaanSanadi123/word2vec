@@ -9,7 +9,7 @@ the reason these three have been clubbed together is because,
 all of these require count(wi) -> which basically means the count of word 'i'
 and this can be calculated just once, and reduce the computational overhead 
 '''
-
+import numpy as np
 from collections import Counter
 import math 
 class VocabManager:
@@ -81,7 +81,7 @@ class VocabManager:
 
         # redeclaring table 
 
-        self.unigram_table = []
+        temp_table = []
 
         for word,count in self.word_counts.items():
             word_id = self.word_to_id[word]
@@ -89,4 +89,5 @@ class VocabManager:
             adjusted_fraction = math.pow(count,power)/total_adjusted
 
             num_slots = int(round(adjusted_fraction * table_size))
-            self.unigram_table.extend([word_id] * num_slots)
+            temp_table.extend([word_id] * num_slots)
+        self.unigram_table = np.array(temp_table, dtype=np.int32)

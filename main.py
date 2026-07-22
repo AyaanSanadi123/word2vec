@@ -2,6 +2,7 @@ import numpy as np
 import json
 import os
 from datetime import datetime
+import time
 # import layer-1
 from data_preprocessing.tokenizer import TextTokenizer
 from data_preprocessing.phraser import PhraseMiner
@@ -94,7 +95,7 @@ we have 3 loops
 
 '''
 
-def log_experiment(hyperparameters: dict, best_accuracy: float,  filepath: str = "experiments.json"):
+def log_experiment(hyperparameters: dict, best_accuracy: float,  total_training_time: float,filepath: str = "experiments.json"):
     """Appends the results of a training run to a JSON ledger."""
     
     # 1. Build the data dictionary for this specific run
@@ -102,7 +103,8 @@ def log_experiment(hyperparameters: dict, best_accuracy: float,  filepath: str =
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "hyperparameters": hyperparameters,
         "metrics": {
-            "best_accuracy_percent": best_accuracy
+            "best_accuracy_percent": best_accuracy,
+            "total_training_time_seconds": round(total_training_time, 2),
             
         },
         "artifact_path": "models/best_target_matrix.npy"
@@ -147,7 +149,7 @@ def execute_training(
     best_accuracy = -1.0
     patience_counter = 0
     patience_limit = 3
-
+    start_time = time.time()
     for epoch in range(epochs):
         print(f"\n🚀 Epoch {epoch + 1}/{epochs} starting in C...")
         global_pairs_processed = run_c_epoch(
@@ -185,7 +187,8 @@ def execute_training(
                 print(f"\n🛑 Early stopping triggered! Model hasn't improved in {patience_limit} epochs.")
                 print(f"Keeping the best matrix with {best_accuracy:.2f}% accuracy.")
                 break 
-            
+
+    total_training_time = time.time() - start_time       
     print("\n📝 Logging experiment results to experiments.json...")
     run_configs = {
         "embed_dim": embed_dim,
@@ -194,7 +197,7 @@ def execute_training(
         "negative_k": negative_k,
         "window_size": window_size
     }
-    log_experiment(run_configs, best_accuracy)               
+    log_experiment(run_configs, best_accuracy,total_training_time)               
     print("\nTraining Complete! 🚀")
     
     return matrices

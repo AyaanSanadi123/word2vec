@@ -13,9 +13,9 @@ class Word2VecMatrices:
             low = -init_bound,
             high = init_bound,
             size =(self.vocab_size,self.embed_dim)
-        )
+        ).astype(np.float32)
         # this is U
-        self.context_matrix = np.zeros((self.vocab_size,self.embed_dim))
+        self.context_matrix = np.zeros((self.vocab_size,self.embed_dim),dtype=np.float32)
 
     def get_target_vector(self,target_id:int) -> np.ndarray:
         return self.target_matrix[target_id]
