@@ -26,6 +26,9 @@ from testing.instrinsic_evaluator import Word2VecEvaluator
 # layer-1 for c
 from data_preprocessing.c_helper import encode_corpus,dict_to_c_array
 
+# layer 3 for c
+from training_engine.c_wrapper import run_c_epoch
+
 
 
 """
@@ -91,7 +94,7 @@ we have 3 loops
 
 '''
 
-def log_experiment(hyperparameters: dict, best_accuracy: float, final_loss: float, filepath: str = "experiments.json"):
+def log_experiment(hyperparameters: dict, best_accuracy: float,  filepath: str = "experiments.json"):
     """Appends the results of a training run to a JSON ledger."""
     
     # 1. Build the data dictionary for this specific run
@@ -99,8 +102,8 @@ def log_experiment(hyperparameters: dict, best_accuracy: float, final_loss: floa
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "hyperparameters": hyperparameters,
         "metrics": {
-            "best_accuracy_percent": best_accuracy,
-            "final_epoch_loss": final_loss
+            "best_accuracy_percent": best_accuracy
+            
         },
         "artifact_path": "models/best_target_matrix.npy"
     }
@@ -119,89 +122,71 @@ def log_experiment(hyperparameters: dict, best_accuracy: float, final_loss: floa
     history.append(entry)
     with open(filepath, "w") as f:
         json.dump(history, f, indent=4)
+
+
 def execute_training(
-        mined_corpus:list,
-        vocab:VocabManager,
+        encoded_corpus: np.ndarray,
+        c_discard_probs : np.ndarray,
+        vocab : VocabManager,
         embed_dim : int = 300,
-        epochs : int = 5,
+        epochs:int = 5,
         learning_rate : float = 0.025,
-        negative_k:int = 5,
-        window_size: int = 5
+        negative_k : int = 5,
+        window_size : int = 5
 ):
-    total_words = sum(len(sentence) for sentence in mined_corpus)
-    estimated_total_pairs = total_words * window_size * epochs
-    scheduler = LearningRateScheduler(initial_lr=learning_rate, total_steps=estimated_total_pairs)
-    total_pair_count = 0
-    current_lr = learning_rate
     print("\n--- Phase 2: Memory Allocation ---")
     vocab_size = len(vocab.word_to_id)
-    matrices = Word2VecMatrices(vocab_size,embed_dim)
+    matrices = Word2VecMatrices(vocab_size, embed_dim)
 
-    print("\n--- Phase 3: The Training Engine ---")
-    # setting up the auto saving
-    # --- Artifact Manager Setup ---
+    # calculate the estimated total pairs and set a counter for the processed pairs 
+    total_words = len(encoded_corpus)
+    estimated_total_pairs = total_words * window_size * epochs
+    global_pairs_processed = 0
+
+    print("\n--- Phase 3: The C-Engine Autopilot ---")
     best_accuracy = -1.0
     patience_counter = 0
-    patience_limit = 3  
+    patience_limit = 3
 
-    # loop - 1 (epochs)
     for epoch in range(epochs):
-        print(f"Epoch {epoch + 1}/{epochs} starting...")
-        epoch_loss = 0.0
-        epoch_pair_count = 0
-        # pair generator 
-        pair_generator = generate_training_pairs(mined_corpus,vocab,window_size)
+        print(f"\n🚀 Epoch {epoch + 1}/{epochs} starting in C...")
+        global_pairs_processed = run_c_epoch(
+            corpus=encoded_corpus,
+            target_matrix=matrices.target_matrix,
+            context_matrix=matrices.context_matrix,
+            vocab_size=vocab_size,
+            embed_size=embed_dim,
+            unigram_table=vocab.unigram_table,
+            window_size=window_size,
+            num_negatives=negative_k,
+            initial_lr=learning_rate,
+            total_expected_pairs=estimated_total_pairs,
+            global_pairs_processed=global_pairs_processed,
+            discard_probs=c_discard_probs
+        )
 
+        print(f"✅ Epoch {epoch + 1} Math Completed.")
+        print("Running Benchmark Evaluation...")
+        evaluator = Word2VecEvaluator(matrices.target_matrix, vocab) 
+        epoch_accuracy = evaluator.evaluate_benchmark("testing/questions-words.txt")
         
-        for target_id,context_id in pair_generator:
-            if total_pair_count % 10000 == 0:
-                current_lr = scheduler.get_rate(total_pair_count)
-            # get the negative sample 
-            negative_samples= get_negative_samples(vocab.unigram_table,negative_k)
-
-            # start the maths 
-            step_loss = train_step(target_id,context_id,negative_samples,matrices,current_lr)
-
-            # add up the loss 
-            epoch_loss += step_loss
-            total_pair_count += 1
-            epoch_pair_count += 1
-        if epoch_pair_count > 0:
-            avg_loss = epoch_loss / epoch_pair_count
-            print(f"Epoch {epoch + 1} Completed | Average Loss: {avg_loss:.4f} | Final LR: {current_lr:.6f}")
-            # --- THE NEW INJECTION: OVERFIT DETECTION ---
-            print("Running Benchmark Evaluation...")
+        if epoch_accuracy > best_accuracy:
+            best_accuracy = epoch_accuracy
+            patience_counter = 0
             
-            # 1. Instantiate the evaluator with the half-trained matrices
-            evaluator = Word2VecEvaluator(matrices.target_matrix, vocab) 
+            os.makedirs("models", exist_ok=True)
+            np.save("models/best_target_matrix.npy", matrices.target_matrix)
+            print(f"🌟 New best model saved! Accuracy: {best_accuracy:.2f}%")
+        else:
+            patience_counter += 1
+            print(f"⚠️ No improvement. Patience: {patience_counter}/{patience_limit}")
             
-            # 2. Run the test set (assuming it's in the root folder)
-            epoch_accuracy=evaluator.evaluate_benchmark("testing//questions-words.txt")
-            if epoch_accuracy > best_accuracy:
-                # The model got smarter!
-                best_accuracy = epoch_accuracy
-                patience_counter = 0  # Reset the patience counter
-                
-                # Overwrite the previous best matrix V
-                # (Assuming matrices has a target_matrix attribute)
-                os.makedirs("models", exist_ok=True)
-                np.save("models//best_target_matrix.npy", matrices.target_matrix)
-                print(f"🌟 New best model saved! Accuracy: {best_accuracy:.2f}%")
-                
-            else:
-                # The model did not improve.
-                patience_counter += 1
-                print(f"⚠️ No improvement. Patience: {patience_counter}/{patience_limit}")
-                
-                # Check for Early Stopping
-                if patience_counter >= patience_limit:
-                    print(f"\n🛑 Early stopping triggered! Model hasn't improved in {patience_limit} epochs.")
-                    print(f"Keeping the best matrix with {best_accuracy:.2f}% accuracy.")
-                    break # Kills the training loop instantly
+            if patience_counter >= patience_limit:
+                print(f"\n🛑 Early stopping triggered! Model hasn't improved in {patience_limit} epochs.")
+                print(f"Keeping the best matrix with {best_accuracy:.2f}% accuracy.")
+                break 
             
     print("\n📝 Logging experiment results to experiments.json...")
-    
-    # Package the hyperparameters into a clean dictionary
     run_configs = {
         "embed_dim": embed_dim,
         "epochs": epochs,
@@ -209,32 +194,27 @@ def execute_training(
         "negative_k": negative_k,
         "window_size": window_size
     }
-    
-    # Send it to the ledger (we use avg_loss from the final epoch)
-    log_experiment(run_configs, best_accuracy, avg_loss)               
+    log_experiment(run_configs, best_accuracy)               
     print("\nTraining Complete! 🚀")
-    return matrices 
+    
+    return matrices
+
 
 
 
 if __name__ == "__main__":
-    with open("text8//text8", "r") as f:
+    with open("text8/text8", "r") as f:
         raw_text = f.read()
 
+    # 1. Run Phase 1
+    encoded_corpus, c_discard_probs, vocab = run_data_pipeline(raw_text=raw_text)
     
-
-    mined_corpus, vocab = run_data_pipeline(
-        raw_text=raw_text,
-        
-    )
-    
-    # 3. Run Phase 2 & 3
+    # 2. Run Phase 2 & 3
     trained_matrices = execute_training(
-        mined_corpus=mined_corpus,
+        encoded_corpus=encoded_corpus,
+        c_discard_probs=c_discard_probs,
         vocab=vocab,
         embed_dim=300,
         epochs=5,
         learning_rate=0.025
     )
-
-
