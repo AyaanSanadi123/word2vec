@@ -8,7 +8,7 @@ float fast_sigmoid(float x){
     return 1.0f / (1.0f + expf(-x));
 }
 
-void train_epoch(
+int train_epoch(
 int* corpus, // this is the flat 1D array that has the index values 
 int corpus_len,
 float* context_matrix,float* target_matrix,
@@ -16,13 +16,14 @@ int vocab_size,int embed_size,
 int* unigram_table, // this is the 10 million slots array, each containing the index value of the word it represents
 int unigram_size, // this is prolly 10 million
 int window_size,int num_negatives, // this is prolly the number of negative samples usually 5? the K value in the equation
-float current_lr,float* discard_probs
+float initial_lr,int total_expected_pairs, int global_pairs_processed,
+float* discard_probs
 ){
     // the first course of action is to create a target graident variable 
     // its the same logic of target_update variable in the python implementation 
     // we need some place to hold the graident values so we can do a cumilative update on the target vector 
     float * target_update = (float*) malloc(embed_size * sizeof(float));
-    
+    float curr_lr = initial_lr;
     // loop through the corpus 
     for (int i = 0; i < corpus_len; i++)
     {
@@ -47,8 +48,21 @@ float current_lr,float* discard_probs
                 int j = i + (direction * step); // i is the center words index, and j is the current context word 
                 if (j < 0 || j >= corpus_len) break;
                 int context_id = corpus[j];
-                if (context_id == -1) break; // check if we hit the end 
-
+                if (context_id == -1) break; // check if we hit the end
+                
+                // at this point we found a valid pair,
+                // update the lr
+                global_pairs_processed++;
+                if (global_pairs_processed % 10000 == 0) // update every 10,000 words
+                {
+                    float progress = (float)global_pairs_processed/(float)total_expected_pairs;
+                    curr_lr = initial_lr * (1.0f - progress);
+                
+                if (curr_lr < initial_lr * 0.0001f) {
+                        curr_lr = initial_lr * 0.0001f;
+                    }
+                
+                }
                 // skip gram negative sampling 
                 
                 // clear the entire target_update for a fresh batch of values
@@ -88,7 +102,7 @@ float current_lr,float* discard_probs
                     // apply sigmoid
                     float z = fast_sigmoid(dot_product);
                     // get the graident value
-                    float gradient = (label - z) * current_lr;
+                    float gradient = (label - z) * curr_lr;
 
                     for(int d = 0;d<embed_size;d++){
                         target_update[d] += gradient * u_context[d]; // accumilate the values 
@@ -108,4 +122,5 @@ float current_lr,float* discard_probs
        }   
     }
     free(target_update);
+    return global_pairs_processed;
 }
