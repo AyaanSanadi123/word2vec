@@ -34,7 +34,12 @@ class Word2VecEvaluator:
 
         # we never get exact match thats why we cant jus lookup query_vector 
         # we need to find the closest match in our vocab
-        best_ids = np.argsort(similarities)[::-1]
+
+        # We grab top_n + len(ignore_words) just in case the top hits are our ignore words
+        search_depth = min(top_n + len(ignore_words), len(similarities))
+        best_ids_unsorted = np.argpartition(similarities, -search_depth)[-search_depth:]
+        best_ids = best_ids_unsorted[np.argsort(-similarities[best_ids_unsorted])]
+        
         results = []
         for index in best_ids:
             match_word = self.vocab.id_to_word[index]

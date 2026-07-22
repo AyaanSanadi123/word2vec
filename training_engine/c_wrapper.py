@@ -13,8 +13,8 @@ float_2d_type = np.ctypeslib.ndpointer(dtype=np.float32, ndim=2, flags='C_CONTIG
 c_engine.train_epoch.argtypes = [
     int_array_type,     # int* corpus (1D)
     ctypes.c_int,       # int corpus_len
-    float_2d_type,      # float* target_matrix (2D)  <-- CHANGED TO 2D
-    float_2d_type,      # float* context_matrix (2D) <-- CHANGED TO 2D
+    float_2d_type,      # float* target_matrix (2D)  
+    float_2d_type,      # float* context_matrix (2D)
     ctypes.c_int,       # int vocab_size
     ctypes.c_int,       # int embed_size
     int_array_type,     # int* unigram_table (1D)
@@ -22,12 +22,12 @@ c_engine.train_epoch.argtypes = [
     ctypes.c_int,       # int window_size
     ctypes.c_int,       # int num_negatives
     ctypes.c_float,     # float initial_lr
-    ctypes.c_int,       # int total_expected_pairs
-    ctypes.c_int,       # int global_pairs_processed
-    float_1d_type       # float* discard_probs (1D)  <-- CHANGED TO 1D
+    ctypes.c_longlong,       # int total_expected_pairs
+    ctypes.c_longlong,       # int global_pairs_processed
+    float_1d_type       # float* discard_probs (1D) 
 ]
 
-c_engine.train_epoch.restype = ctypes.c_int
+c_engine.train_epoch.restype = ctypes.c_longlong
 
 # 4. The Python Interface Function
 def run_c_epoch(corpus, target_matrix, context_matrix, vocab_size, embed_size, 
