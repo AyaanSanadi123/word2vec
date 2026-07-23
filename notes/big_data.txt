@@ -94,3 +94,17 @@ so the bet is, at this mark of 25 million, we have new-york has come atleast 2-4
 we clear out all the bigrams the have count = 1, this cleans a massive amount of space and also hopefully is enough 
 context length to let words that actually need to be merged appear enough amount of times 
 
+
+okay so the first part of the data streaming pipeline is done
+we built two functions build_clean_corpus and get_stream_counts
+
+the idea is, 
+build_clean_corpus will get the data from the dataset, line by line 
+each line is sent to the tokenizer, where is gets cleaned and made into a list of lists, each list being a sentence 
+these lists and then systematically added to the tempfile 
+each line = one sentence 
+
+the get_stream_counts gets the data from this new file, reads it line by line 
+first it cleans the \n we added in the previous function and gives us a clean list of words 
+here we update the unigram and bigram counts 
+
