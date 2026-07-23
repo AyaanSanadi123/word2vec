@@ -177,6 +177,14 @@ def execute_training(
             patience_counter = 0
             
             os.makedirs("models", exist_ok=True)
+
+            with open("models/word_to_id.json", "w") as f:
+                    json.dump(vocab.word_to_id, f)
+
+
+            with open("models/id_to_word.json", "w") as f:
+                    json.dump(vocab.id_to_word, f)
+                    
             np.save("models/best_target_matrix.npy", matrices.target_matrix)
             print(f"🌟 New best model saved! Accuracy: {best_accuracy:.2f}%")
         else:
