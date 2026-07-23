@@ -17,17 +17,9 @@ class TextTokenizer:
         
         return text
     
-    def tokenize(self,source:Union[str,Path]) -> List[str]:
-        if isinstance(source,(str,Path)) and Path(source).is_file():
-            with open(source, 'r', encoding='utf-8') as f:
-                raw_text = f.read()
-        else:
-            raw_text = str(source)
-
-
-
+    def tokenize(self,text:str) -> List[List[str]]:
         corpus = []
-        sentences = self.sentence_pattern.split(raw_text)
+        sentences = self.sentence_pattern.split(text)
 
         for sentence in sentences:
             cleaned = self.clean_text(sentence)

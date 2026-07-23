@@ -1,0 +1,96 @@
+here i just want to write some notes about the techniques i am using to run larger datasets with the constraints of my laptop 
+they seem pretty intersting and fun, 
+alright so in the previous versions of this pipeline, we treated the corpus as a class object 
+the entire text was converted into a list of lists and stored in the ram
+
+this worked fine for smaller datasets, where the word count was a few million words 
+there were about 11-12 thousand unique words 
+plus the word_to_id dictinoary and the unigram and bigram counts 
+
+the larger datasets have about 150 milllion + words and about 2-3 million unique words 
+this itself would take significant amount of RAM 
+plus the unigram of this would take a little more RAM but the real bottle neck comes while trying to store the bigram 
+150 million words would create around 50 million bigrams 
+this would eat up ram and lead to out-of-memory errors 
+
+
+thus we need to use big data techniques to stream the data in bits and pieces.
+also another change in the approach will be to stop treating the ram as a storage place and begin to treat it as a place where data is processed and discarded right away
+
+ data -> ram (cleaning) -> new_file
+
+* how to stream data line by line 
+instead of using in-built python functions such as read(),readlines()
+we use a simple for loop to get line, clean them break them into words and stream them back into a new file 
+
+
+the line to sentence issue 
+now when we use to just dump the data into the RAM, our sentence_pattern regex use 
+to find all the sentences identifying things like '.?!'
+Now that we are streaming data line by line we run into a problem
+
+one line != one sentence 
+so how can we process one sentence(the distinction of a sentence is required for semantic meaning,
+if we loose track of what a sentence is, its just a large collection of words and the model behaves weird)
+from streaming the data line by line??
+
+
+how the dataset is structured and what are our options ->
+the dataset we are going to use is enwik9,
+each line of this dataset contains about 5-10 complete sentences 
+thus when we run sentence_pattern on a line, we get those many sentences 
+
+the edge case, now assume a sentence does not end in the line
+we hit a \n and the remaining sentence finishes in the next line 
+
+ideally to handle this case, we need to build a custom buffer, that stores the data of the two lines
+runs the sentence_pattern on them both, glues the sentence and returns the value 
+
+but for the simplicity of this version, we are going to just simply ignore the edge cases,
+this feature will be added in future versions 
+the goal of this version is to get the basic data streaming fundamentals 
+
+so lets try and understand what type of impact it has on the data 
+lets say we have something like
+"The dog died. So\nthe owner got a new puppy!"
+now the line "The dog died. So" will first get streamed 
+the sentence_pattern will return two lists and the clean_text will convert it to all small 
+[['the', 'dog', 'died'], ['so']]
+
+the next line will be 
+[['the', 'owner', 'got', 'a', 'new', 'puppy']]
+and finally when we stream it into our new file we get 
+
+the dog died
+so
+the owner got a new puppy
+
+thus no word is deleted, but we do loose the semantic relation between so-the
+this effects our bigram formation as "so" and "the" never really get to be a pair 
+
+
+the bigram dilemma 
+now as we stated before, the bigram count can reach 50 million if left unchecked, 
+this can cause the RAM to run out of memory 
+
+now the way bigrams are merged is by using a formula 
+a scoring function, at the end of the unigram and bigram buildup
+we run this formula score(a,b) = (count(a,b) - delta) * total_words/count(a) * count(b)
+
+the count(a,b) is stored in the bigram and the count(a),count(b) in the unigram 
+
+if this score value is above a certain thershold, we merge the words into a new word,
+eventually the bigram hash map is discarded and only the new unigram hasmap exists with the count of the new formed words 
+
+now again, the ideal case for this will be, we get the bigram and unigram loaded into the ram
+so we know the count of every count(a,b) possible.
+but again we are constrained by memory 
+so we use a trick, now this data set will roughly produce around 50 million bigrams 
+so everytime the bigram reaches 25 million slot capacity 
+we run a small cleaning job on it, now its pretty evident that most bigrams wont make any sense 
+things like 'so-the' will never be words
+things like new-york and san-fransico will be,
+so the bet is, at this mark of 25 million, we have new-york has come atleast 2-4 times,
+we clear out all the bigrams the have count = 1, this cleans a massive amount of space and also hopefully is enough 
+context length to let words that actually need to be merged appear enough amount of times 
+

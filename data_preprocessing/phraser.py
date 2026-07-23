@@ -56,7 +56,7 @@ class PhraseMiner:
 
                 while i < sent_len:
                     if i == sent_len - 1:
-                        new_sentence.append(sentence[i]) # FIXED: was .appned()
+                        new_sentence.append(sentence[i]) 
                         break
                     
                     w1 = sentence[i]
