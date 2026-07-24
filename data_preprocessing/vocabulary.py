@@ -26,13 +26,12 @@ class VocabManager:
         self.word_counts = {} # dic to see how many times each word is used in a corpus
 
         # the sub-sampling filter 
-        self.discard_probs = {}
-
+        self.discard_probs = None
         # unigram noise distribution 
-        self.unigram_table = []
+        self.unigram_table = None
 
 
-    def build_vocab(self, corpus: list):
+    def build_vocab(self, filepath: str):
                  
         '''
          our tasks are 
@@ -41,21 +40,24 @@ class VocabManager:
          3. build word_to_id and id_to_word         
         '''
         raw_counts = Counter()
-        self.total_words = 0
-
-        for sentence in corpus:
-            raw_counts.update(sentence)
-            self.total_words += len(sentence)
+        with open(filepath, 'r', encoding='utf-8') as f:
+            for line in f:
+                sentence = line.strip().split()
+                if not sentence:
+                    continue
+                raw_counts.update(sentence)
 
 
         current_id = 0
+        self.total_words = 0
+
 
         for word,count in raw_counts.items():
             if count >= self.min_count:
 
                 # us building our own, pruned count 
                 self.word_counts[word] = count
-
+                self.total_words += count
 
                 # Build the bidirectional bridge
                 self.word_to_id[word] = current_id
@@ -63,17 +65,20 @@ class VocabManager:
 
                 
                 current_id+=1
-
+        print(f"✅ Vocab built! Unique words retained: {len(self.word_to_id):,}")
+        print(f"✅ Total tokens in corpus after pruning: {self.total_words:,}")
 
     def calculate_subsampling(self):
+        self.discard_probs = np.zeros(len(self.word_to_id), dtype=np.float32)
 
         for word,count in self.word_counts.items():
+            word_id = self.word_to_id[word]
 
             f_w = count/self.total_words
 
             discard_prob = 1 - math.sqrt(self.t / f_w)
 
-            self.discard_probs[word] = max(0,discard_prob) # if the f_w is smaller than t, discard prob can be 1 - (>1) and can be negitive, so basically rounded of to 0, saying no chance of dropping this rare word 
+            self.discard_probs[word_id] = max(0.0,discard_prob) # if the f_w is smaller than t, discard prob can be 1 - (>1) and can be negitive, so basically rounded of to 0, saying no chance of dropping this rare word 
 
     def build_unigram_table(self,table_size:int=10_000_000):
         power = 0.75
@@ -91,3 +96,4 @@ class VocabManager:
             num_slots = int(round(adjusted_fraction * table_size))
             temp_table.extend([word_id] * num_slots)
         self.unigram_table = np.array(temp_table, dtype=np.int32)
+        print(f"✅ Unigram table generated with {len(self.unigram_table):,} slots.")

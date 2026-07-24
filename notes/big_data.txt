@@ -108,3 +108,4 @@ the get_stream_counts gets the data from this new file, reads it line by line
 first it cleans the \n we added in the previous function and gives us a clean list of words 
 here we update the unigram and bigram counts 
 
+
