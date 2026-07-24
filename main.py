@@ -7,7 +7,7 @@ import time
 from data_preprocessing.tokenizer import TextTokenizer
 from data_preprocessing.phraser import PhraseMiner,StreamingPhraseMiner
 from data_preprocessing.vocabulary import VocabManager
-
+from utils.streaming import build_clean_corpus
 # import layer-2 
 from data_loader.sliding_window import generate_training_pairs
 from embedding_layer.matrices import Word2VecMatrices
@@ -25,7 +25,7 @@ from testing.instrinsic_evaluator import Word2VecEvaluator
 
 
 # layer-1 for c
-from data_preprocessing.c_helper import encode_corpus,dict_to_c_array
+from data_preprocessing.c_helper import encode_corpus
 
 # layer 3 for c
 from training_engine.c_wrapper import run_c_epoch
@@ -42,44 +42,40 @@ structures that represent the cleaned and pruned data.
 of dropping frequent words, builds the 10,000,000 slot array 
 
 """
-def run_data_pipeline(raw_text : str):
-    print("--- Phase 1: Data Pipeline ---")
+def run_data_pipeline(raw_filepath:str,clean_filepath:str,phrased_filepath:str):
+    print("--- Phase 1: Streaming Data Pipeline ---")
+
+    # clean and tokenizer
+    if not os.path.exists(clean_filepath):
+        print("1. Cleaning and Tokenizing text stream...")
+        tokenizer = TextTokenizer()
+        build_clean_corpus(raw_filepath,clean_filepath,tokenizer)
+    else:
+        print(f"⏩ {clean_filepath} found. Skipping tokenizer phase.")
+
+    # mining phase 
+    if not os.path.exists(phrased_filepath):
+        print("2. Mining phrases via disk-streaming...")
+        miner = StreamingPhraseMiner()
+        miner.fit_transform(clean_filepath,phrased_filepath)
+    else:
+        print(f"⏩ {phrased_filepath} found. Skipping phrase mining.")
+
+    # building Vocabulary and unigram table 
+    print("\n3. Building Vocabulary and Probability Tables...")
+    vocab = VocabManager(min_count=5, subsample_t=1e-5)
     
-    # tokenize the text 
-    print("1. Tokenizing text...")
-    tokenizer = TextTokenizer()
-    raw_corpus = tokenizer.tokenize(raw_text)
-
-    # building new words (mining phase)
-    print("2. Mining phrases...")
-    pharser = PhraseMiner(thresholds=[100, 50], delta=5)
-    mined_corpus = pharser.fit_transform(raw_corpus)
-
-    # delete the raw corpus
-    del raw_corpus
-
-    # 3. Build the Vocabulary and Math Tables
-    print("3. Building Vocabulary and Probability Tables...")
-    vocab = VocabManager(min_count=5,subsample_t = 1e-5)
-    
-    # Pass the newly mined corpus into the vocab manager
-    vocab.build_vocab(mined_corpus)
+    vocab.build_vocab(phrased_filepath)
     vocab.calculate_subsampling()
     vocab.build_unigram_table()
 
-    # phase-4, creating the 1D array for C
-    encoded_corpus = encode_corpus(mined_corpus,vocab)
-    c_discard_probs = dict_to_c_array(vocab.discard_probs, vocab.word_to_id)
-    
+    # encoding file into c array 
+    c_ready_corpus = encode_corpus(phrased_filepath,vocab)
+    print(f"✅ Phase 1 Complete. Pruned Vocabulary Size: {len(vocab.word_to_id):,}")
+    return c_ready_corpus,vocab
 
-    # delete the mined_corpus, we have id_to_word to convert it back 
-    del mined_corpus
     
-    print(f"Phase 1 Complete. Pruned Vocabulary Size: {len(vocab.word_to_id)}")
     
-    return encoded_corpus,c_discard_probs,vocab
-
-
 # phase-2 & 3 combined 
 '''
 phase-3, this phase has 4 major responsibilities 
@@ -128,7 +124,6 @@ def log_experiment(hyperparameters: dict, best_accuracy: float,  total_training_
 
 def execute_training(
         encoded_corpus: np.ndarray,
-        c_discard_probs : np.ndarray,
         vocab : VocabManager,
         embed_dim : int = 300,
         epochs:int = 5,
@@ -164,7 +159,7 @@ def execute_training(
             initial_lr=learning_rate,
             total_expected_pairs=estimated_total_pairs,
             global_pairs_processed=global_pairs_processed,
-            discard_probs=c_discard_probs
+            discard_probs=vocab.discard_probs
         )
 
         print(f"✅ Epoch {epoch + 1} Math Completed.")
@@ -206,16 +201,15 @@ def execute_training(
 
 
 if __name__ == "__main__":
-    with open("text8/text8", "r") as f:
-        raw_text = f.read()
+    RAW_FILE = "data/text8.txt"
+    CLEAN_FILE = "data/text8_clean.txt"
+    PHRASED_FILE = "data/text8_phrased.txt"
 
-    # 1. Run Phase 1
-    encoded_corpus, c_discard_probs, vocab = run_data_pipeline(raw_text=raw_text)
+    encoded_corpus,vocab = run_data_pipeline(RAW_FILE,CLEAN_FILE,PHRASED_FILE)
     
     # 2. Run Phase 2 & 3
     trained_matrices = execute_training(
         encoded_corpus=encoded_corpus,
-        c_discard_probs=c_discard_probs,
         vocab=vocab,
         embed_dim=300,
         epochs=5,
