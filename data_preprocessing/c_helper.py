@@ -18,9 +18,9 @@ def encode_corpus(filepath:str,vocab) -> np.ndarray:
                     sentence_ids.append(vocab.word_to_id[word])
         
         # check is the sentence has atleast 2 words 
-        if len(sentence_ids) > 1:
-            flat_corpus.extend(sentence_ids)
-            flat_corpus.append(-1) # add the end of sentence 
+            if len(sentence_ids) > 1:
+                flat_corpus.extend(sentence_ids)
+                flat_corpus.append(-1) # add the end of sentence 
     
     # we need to pack this flat_corpus into a contiguous block for c 
     c_ready_corpus = np.array(flat_corpus,dtype=np.int32)
