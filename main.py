@@ -5,7 +5,7 @@ from datetime import datetime
 import time
 # import layer-1
 from data_preprocessing.tokenizer import TextTokenizer
-from data_preprocessing.phraser import PhraseMiner
+from data_preprocessing.phraser import PhraseMiner,StreamingPhraseMiner
 from data_preprocessing.vocabulary import VocabManager
 
 # import layer-2 

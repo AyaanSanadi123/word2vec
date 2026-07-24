@@ -2,17 +2,20 @@ import numpy as np
 
 # this converts corpus into a flat array with their values being the index ids
 
-def encode_corpus(mined_corpus:list,vocab) -> np.ndarray:
+def encode_corpus(filepath:str,vocab) -> np.ndarray:
     print("Encoding 2D list into a 1D array of index values")
     flat_corpus = [] # this will store the values (12,1,-1,11,16,-1)
 
-    for sentence in mined_corpus:
-        sentence_ids = []
+    with open(filepath, 'r', encoding='utf-8') as f:
+        for line in f:
+            sentence = line.strip().split()
+            if not sentence:
+                continue
 
-        for word in sentence:
-            if word in vocab.word_to_id:
-                sentence_ids.append(vocab.word_to_id[word])
-
+            sentence_ids = []
+            for word in sentence:
+                if word in vocab.word_to_id:
+                    sentence_ids.append(vocab.word_to_id[word])
         
         # check is the sentence has atleast 2 words 
         if len(sentence_ids) > 1:
@@ -24,12 +27,15 @@ def encode_corpus(mined_corpus:list,vocab) -> np.ndarray:
     return c_ready_corpus
 
 
+
+# updated the vocab manager, to automatically convert discard_prob_dict to array 
+
 # writing a function to convert discard_prob_dict to flat array 
-def dict_to_c_array(discard_prob_dict,word_to_id):
-    vocab_size = len(word_to_id)
-    c_array = np.zeros(vocab_size,dtype=np.float32)
+# def dict_to_c_array(discard_prob_dict,word_to_id):
+#     vocab_size = len(word_to_id)
+#     c_array = np.zeros(vocab_size,dtype=np.float32)
 
-    for word,prob in discard_prob_dict.items():
-        c_array[word_to_id[word]] = prob
+#     for word,prob in discard_prob_dict.items():
+#         c_array[word_to_id[word]] = prob
 
-    return c_array
+#     return c_array
