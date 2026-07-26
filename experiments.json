@@ -1,6 +1,6 @@
 [
     {
-        "timestamp": "2026-07-23 01:52:43",
+        "timestamp": "2026-07-26 12:12:48",
         "hyperparameters": {
             "embed_dim": 300,
             "epochs": 5,
@@ -9,8 +9,8 @@
             "window_size": 5
         },
         "metrics": {
-            "best_accuracy_percent": 16.51551850391483,
-            "total_training_time_seconds": 1753.82
+            "best_accuracy_percent": 16.273305920126177,
+            "total_training_time_seconds": 532.29
         },
         "artifact_path": "models/best_target_matrix.npy"
     }

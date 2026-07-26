@@ -2,7 +2,7 @@ import ctypes
 import numpy as np
 import os
 
-lib_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'maths_engine.dll')
+lib_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'maths_engine.dylib')
 c_engine = ctypes.CDLL(lib_path)
 
 int_array_type = np.ctypeslib.ndpointer(dtype=np.int32, ndim=1, flags='C_CONTIGUOUS')
