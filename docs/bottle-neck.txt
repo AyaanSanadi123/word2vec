@@ -1,0 +1,15 @@
+so, when we first created the streaming pipeline and began to train 
+on the enwik-9 dataset, the training on a single cpu core, seemed very slow for a dataset,
+thus we used the openMP lib for its multi-threading abilities,
+however to our suprise, when we first trained the enwik-9 dataset on it, the models accuracy was around 0.05%!
+this was very suprising because a must smaller dataset such as text8 has achieved 16.27% accuracy,
+Anyway the usual debugging suspects were the data streaming pipeline and math errors in the way the neural net was written
+. After spending many days, debugging the entire data-preprocessing pipeline,
+we could not find anything wrong with it or the math engine,
+Then we decided to take a step back and test the text8 dataset again, but with the new pipeline.
+and for this test, we removed the multi-threading lib, to our suprise, the text8 dataset performed at par, with the previous pipeline.
+More over the speed at which the training happened was much faster than the previous pipeline!
+
+Thus now the question remains, why did multi-threading fail us?
+How did it fail us? and what solutions exist to patch this issue,
+

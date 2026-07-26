@@ -17,7 +17,7 @@ def build_clean_corpus(raw_filepath:str,clean_filepath:str,tokenizer:TextTokeniz
     bigram_counts = defaultdict(int)
 
     # bigram cleaning cutoff 
-    capacity_limit = 25_000_000
+    capacity_limit = 15_000_000
 
     print(f"Streaming {raw_filepath} to {clean_filepath}...")
     with open(raw_filepath,'r',encoding='utf-8') as raw_file,\

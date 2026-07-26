@@ -209,9 +209,9 @@ def execute_training(
 
 
 if __name__ == "__main__":
-    RAW_FILE = "data/text8.txt"
-    CLEAN_FILE = "data/text8_clean.txt"
-    PHRASED_FILE = "data/text8_phrased.txt"
+    RAW_FILE = "data/enwik9.txt"
+    CLEAN_FILE = "data/enwik9_clean.txt"
+    PHRASED_FILE = "data/enwik9_phrased.txt"
 
     encoded_corpus,vocab = run_data_pipeline(RAW_FILE,CLEAN_FILE,PHRASED_FILE)
     
