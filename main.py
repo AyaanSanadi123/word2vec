@@ -126,7 +126,7 @@ def execute_training(
         encoded_corpus: np.ndarray,
         vocab : VocabManager,
         embed_dim : int = 300,
-        epochs:int = 5,
+        epochs:int = 50,
         learning_rate : float = 0.025,
         negative_k : int = 5,
         window_size : int = 5
@@ -143,7 +143,7 @@ def execute_training(
     print("\n--- Phase 3: The C-Engine Autopilot ---")
     best_accuracy = -1.0
     patience_counter = 0
-    patience_limit = 3
+    patience_limit = 7
     start_time = time.time()
     for epoch in range(epochs):
         print(f"\n🚀 Epoch {epoch + 1}/{epochs} starting in C...")
@@ -172,6 +172,12 @@ def execute_training(
             patience_counter = 0
             
             os.makedirs("models", exist_ok=True)
+            with open("models/word_to_id.json", "w") as f:
+                    json.dump(vocab.word_to_id, f)
+
+
+            with open("models/id_to_word.json", "w") as f:
+                    json.dump(vocab.id_to_word, f)
             np.save("models/best_target_matrix.npy", matrices.target_matrix)
             print(f"🌟 New best model saved! Accuracy: {best_accuracy:.2f}%")
         else:
@@ -201,9 +207,9 @@ def execute_training(
 
 
 if __name__ == "__main__":
-    RAW_FILE = "data/text8.txt"
-    CLEAN_FILE = "data/text8_clean.txt"
-    PHRASED_FILE = "data/text8_phrased.txt"
+    RAW_FILE = "data/enwik9.txt"
+    CLEAN_FILE = "data/enwik9_clean.txt"
+    PHRASED_FILE = "data/enwik9_phrased.txt"
 
     encoded_corpus,vocab = run_data_pipeline(RAW_FILE,CLEAN_FILE,PHRASED_FILE)
     
@@ -212,6 +218,6 @@ if __name__ == "__main__":
         encoded_corpus=encoded_corpus,
         vocab=vocab,
         embed_dim=300,
-        epochs=5,
+        epochs=50,
         learning_rate=0.025
     )

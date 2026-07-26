@@ -1,0 +1,47 @@
+so, when we first created the streaming pipeline and began to train 
+on the enwik-9 dataset, the training on a single cpu core, seemed very slow for a dataset,
+thus we used the openMP lib for its multi-threading abilities,
+however to our suprise, when we first trained the enwik-9 dataset on it, the models accuracy was around 0.05%!
+this was very suprising because a must smaller dataset such as text8 has achieved 16.27% accuracy,
+Anyway the usual debugging suspects were the data streaming pipeline and math errors in the way the neural net was written
+. After spending many days, debugging the entire data-preprocessing pipeline,
+we could not find anything wrong with it or the math engine,
+Then we decided to take a step back and test the text8 dataset again, but with the new pipeline.
+and for this test, we removed the multi-threading lib, to our suprise, the text8 dataset performed at par, with the previous pipeline.
+More over the speed at which the training happened was much faster than the previous pipeline!
+
+Thus now the question remains, why did multi-threading fail us?
+How did it fail us? and what solutions exist to patch this issue,
+
+Okay so the problem is caused before or multiple threads updating the same vector values at the same time,
+with different negative sample values 
+
+take a word "the", initially having 0.5 as the value,  in thread A will generate a new push of +0.04
+and in thread be, will generate a net pull of -.01, now ideally, its suppose to be update first by A 
+and made 0.54, then updated by B and then made 0.53
+
+thus its value must be 0.53 at the end of these two threads.
+However, what likey occurs is, 
+thread A,B create a race condition for themselves 
+and when A makes it, 0.54, B does not know of this new state, rather ends up 
+updating the 0.5 to 0.49, thus the work of A is lost.
+
+So, here are the current bottle-necks in our maths_engine.c file, that cause there race conditions->
+
+1. thread-private graident buffer : in the current implementation, we initialize the target_update, outside our loop 
+this will cause all our threads to point to the same array, 
+we need to redeclare this variable inside the loop, so every thread gets its own workspace,
+and they do not overwrite each other again and again 
+
+2. thread safe randomness: currently the, static unsigned long long next_random = 1
+the static word causes this to remain in global memory and this causes all the threads to choose the same random number,
+we need to update this aswell, 
+
+
+3. Thread-Local Rate Decay
+currently our global_pairs_processed is shared by all threads and they update it thousands of times 
+this leads to an absolute mess for the learning rate decay,
+thus we need to find ways to fix this issue 
+
+proposed solutions -> 
+

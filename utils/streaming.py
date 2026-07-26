@@ -36,7 +36,7 @@ def get_stream_counts(clean_filepath:str):
     
     unigram_counts = defaultdict(int)
     bigram_counts = defaultdict(int)
-    capacity_limit = 25_000_000
+    capacity_limit = 15_000_000
 
     with open(clean_filepath,'r',encoding='utf-8') as clean_file:
           for line in clean_file:

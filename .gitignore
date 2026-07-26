@@ -3,3 +3,4 @@ models/
 text8/
 __pycache__/
 *.pyc
+data/
