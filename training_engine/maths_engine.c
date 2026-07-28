@@ -31,7 +31,7 @@ long long train_epoch(
         // allocating, private gradient buffer for the thread
         float *local_target_update = (float *)malloc(embed_size * sizeof(float));
         // RULE 2: Thread-safe randomness (Now protected against Epoch Groundhog Day)
-unsigned long long local_random = (unsigned long long)omp_get_thread_num() * 25214903917ULL + 11 + (unsigned long long)starting_global_pairs;
+        unsigned long long local_random = (unsigned long long)omp_get_thread_num() * 25214903917ULL + 11 + (unsigned long long)starting_global_pairs;
 
         long long local_word_count = 0;
         float progress = (float)starting_global_pairs / (float)total_expected_pairs;
