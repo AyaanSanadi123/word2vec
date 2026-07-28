@@ -126,7 +126,7 @@ def execute_training(
         encoded_corpus: np.ndarray,
         vocab : VocabManager,
         embed_dim : int = 300,
-        epochs:int = 50,
+        epochs:int = 5,
         learning_rate : float = 0.025,
         negative_k : int = 5,
         window_size : int = 5
@@ -143,7 +143,7 @@ def execute_training(
     print("\n--- Phase 3: The C-Engine Autopilot ---")
     best_accuracy = -1.0
     patience_counter = 0
-    patience_limit = 7
+    patience_limit = 3
     start_time = time.time()
     for epoch in range(epochs):
         print(f"\n🚀 Epoch {epoch + 1}/{epochs} starting in C...")
@@ -218,6 +218,6 @@ if __name__ == "__main__":
         encoded_corpus=encoded_corpus,
         vocab=vocab,
         embed_dim=300,
-        epochs=50,
+        epochs=25,
         learning_rate=0.025
     )

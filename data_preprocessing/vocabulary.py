@@ -35,7 +35,7 @@ class VocabManager:
                  
         '''
          our tasks are 
-         1. get total count of all the wors 
+         1. get total count of all the words
          2. prune words below min_count 
          3. build word_to_id and id_to_word         
         '''
