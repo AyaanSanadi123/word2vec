@@ -44,18 +44,6 @@ king ───── queen
  man  ───── woman
 ```
 
-or mathematically,
-
-\[
-\vec{king}
--
-\vec{man}
-+
-\vec{woman}
-\approx
-\vec{queen}
-\]
-
 Words with similar meanings occupy nearby regions in this learned vector space.
 
 ---
