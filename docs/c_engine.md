@@ -1,6 +1,6 @@
 * **phase-3 : The C-Engine & Training Architecture**
 
-*** Overview and Objectives:**
+* **Overview and Objectives:**
 Once Python has preprocessed the text corpus, built the unigram tables, and initialized our memory-aligned weight matrices, execution is handed off to maths_engine.c.
 
 This component serves as the computational core of the model. It handles streaming token traversal, dynamic sliding window generation, negative sampling, and stochastic gradient descent (SGD) updates at maximum CPU speed.
@@ -19,14 +19,14 @@ To process 100+ million tokens efficiently, the train_epoch function relies on a
 
 6.The Embedding Dimension Loop (for (int d = 0; d < embed_size; d++)): Iterates across the vector dimensions (e.g., $300$) to calculate dot products, sigmoids, and vector updates.
 
-***Function Parameters & State Tracking:**
+* **Function Parameters & State Tracking:**
 The train_epoch function accepts the flattened data pointers and tracking variables needed to execute a single pass over the dataset
 Tracking Progress and Rate Decay (epoch_pairs_processed)
 The Problem: Tracking every single word pair globally across multiple threads introduces heavy lock contention.
 
 The Solution: We maintain a thread-local counter (local_word_count). Every 10,000 words, the thread uses a lightweight atomic update to sync with a shared epoch counter
 
-***Vector Updates & Private Gradient Buffers :**(local_target_update)
+* **Vector Updates & Private Gradient Buffers :**(local_target_update)
 When updating weights during SGD, a center word interacts with multiple context and negative words within a single window step. If we modified the target matrix directly during the negative sampling loop, we would create mathematical conflicts.
 
 The Private Workspace: At the start of each thread, we allocate a private gradient buffer:
