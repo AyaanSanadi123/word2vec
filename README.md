@@ -11,7 +11,7 @@ Built completely from scratch using a **high-performance C training engine** and
 
 ## Features
 
-- ⚡ High-performance training engine written entirely in C
+- ⚡ High-performance training engine written in C and Python
 - 🧠 Skip-Gram with Negative Sampling (SGNS)
 - 📚 Streaming dataset preprocessing pipeline
 - 🎯 Vocabulary construction & frequency-based subsampling
@@ -149,7 +149,6 @@ artificial intelligence
 ### 3. Vocabulary Construction
 
 - Word counts
-- Huffman IDs (optional)
 - Frequency statistics
 
 ↓
@@ -327,13 +326,7 @@ monarch
 # Future Improvements
 
 - [ ] Multi-threaded training
-- [ ] Hierarchical Softmax
 - [ ] SIMD optimizations
-- [ ] GPU acceleration
-- [ ] CBOW implementation
-- [ ] Binary model export
-- [ ] Interactive web demo
-
 ---
 
 # References
