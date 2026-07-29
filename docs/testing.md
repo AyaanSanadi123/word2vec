@@ -87,11 +87,11 @@ The core Word2Vec analogy equation is computed.
 
 \[
 \boxed{
-\vec{B}
+vec{B}
 -
-\vec{A}
+vec{A}
 +
-\vec{C}
+vec{C}
 }
 \]
 
