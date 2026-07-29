@@ -1,144 +1,342 @@
-# phase-1 : High-Throughput Streaming Data Pipeline & Phraser
+# Phase 1 — High-Throughput Streaming Data Pipeline
 
-## 1. Overview and Objectives 
-when training large embeding models such as this, loading large datasets such as `enwik9` (1GB+ raw text), into the RAM is not feasible and will lead the system to crash 
-
-**Phase 1** we try and solve this problem by implementing a memory efficient, disk streaming architecture that processes text sequentially in chunks, 
-this standardizes the corpus and extracts multi-word expressions (phrases)
-and also builds a pruned vocabulary
----
-## 2. Core Architectural Components
-
-### A. Text Tokenizer & Cleaner (`tokenizer.py`)
-* **Standardization:** Strips out unwanted HTML tags, punctuation and special artifacts common in raw Wikipedia dumps.
-* **Lowercasing & Normalization:** Converts the text to lowercase and tokenizes sentences uniformly to ensure consistent vocabulary mapping.
-
-### B. Streaming Phrase Miner (`phraser.py`)
-instead of relying only on unigrams (that represent one word), we aim to identify frequenty occuring words and merge them into a new word (bigram)
-* **Multi-Pass Thresholding:** Implements Mikolov’s statistical scoring formula to calculate bigram association scores based on unigram and bigram counts.
-* **File-Swapping I/O Pipeline:** We implemented temporary intermediate files (`temp_A.txt`, `temp_B.txt`) to stream data across multiple passes without loading the corpus into RAM.
-
----
-## 3. Engineering Challenges & Solutions
-
-### The Bigram Memory Bottleneck (`MemoryError`)
-* **The Problem:** Running phrase mining on 100+ million words generates tens of millions of unique, one-off bigram combinations. Storing all unique tuples `(w1, w2)` in a standard Python dictionary causes RAM consumption to balloon past 10GB, resulting in a `MemoryError`.
-* **The Solution:** Implemented a **Periodic Memory Manager** inside `get_stream_counts()` with a strict capacity threshold (capped safely at 15 million entries). Everytime the bigram reaches this limit, the stream evaluates dictionary size and aggressively purges 1-count bigrams (statistical noise that will never meet the phrase extraction threshold), keeping RAM usage completely flat and stable.
-
----
-## 4. Pipeline Execution Flow
-1. **Raw Stream Input:** Reads raw text chunk-by-chunk.
-2. **Pass 1 (Cleaning):** Outputs a standardized clean corpus (`_clean.txt`).
-3. **Pass 2 & 3 (Mining):** Applies multi-pass thresholding to detect multi-word collocations, outputting the final phased corpus (`_phrased.txt`).
-4. **Teardown & Cleanup:** Automatically purges temporary scratch files to leave the workspace pristine.
+> *Building a scalable preprocessing pipeline capable of handling billion-token corpora without exhausting system memory.*
 
 ---
 
-## 5. Engineering Journal: Scaling from Local to Big Data
-this is just an informal section where i want to talk about the challanges we faced and how we overcame them
+# Overview
 
-alright so in the previous versions of this pipeline, we treated the corpus as a class object 
-the entire text was converted into a list of lists and stored in the ram
+Training modern embedding models requires processing extremely large text corpora.
 
-this worked fine for smaller datasets, where the word count was a few million words 
-there were about 11-12 thousand unique words 
-plus the word_to_id dictinoary and the unigram and bigram counts 
+For this project, the primary dataset is **enwik9**, a compressed Wikipedia dump containing over **1 GB of raw text** and more than **150 million tokens** after preprocessing.
 
-the larger datasets have about 150 milllion + words and about 2-3 million unique words 
-this itself would take significant amount of RAM 
-plus the unigram of this would take a little more RAM but the real bottle neck comes while trying to store the bigram 
-150 million words would create around 50 million bigrams 
-this would eat up ram and lead to out-of-memory errors 
+Attempting to load a dataset of this size entirely into memory quickly becomes impractical on consumer hardware.
 
+Instead of treating RAM as permanent storage, this project adopts a **streaming architecture**, where text flows through the pipeline one chunk at a time.
 
-thus we need to use big data techniques to stream the data in bits and pieces.
-also another change in the approach will be to stop treating the ram as a storage place and begin to treat it as a place where data is processed and discarded right away
+```
+                Raw Dataset
+                     │
+                     ▼
+              Read One Line
+                     │
+                     ▼
+             Clean & Tokenize
+                     │
+                     ▼
+            Detect Phrases
+                     │
+                     ▼
+          Write Back To Disk
+                     │
+                     ▼
+             Next Chunk...
+```
 
- data -> ram (cleaning) -> new_file
+This approach keeps memory usage nearly constant regardless of corpus size.
 
-* how to stream data line by line 
-instead of using in-built python functions such as read(),readlines()
-we use a simple for loop to get line, clean them break them into words and stream them back into a new file 
+---
 
-now, because we are streaming data line by line, we run into another problem 
-* **the line to sentence issue**
-now when we use to just dump the data into the RAM, our sentence_pattern regex use 
-to find all the sentences identifying things like '.?!'
-Now that we are streaming data line by line we run into a problem
+# Objectives
 
-one line != one sentence 
-so how can we process one sentence(the distinction of a sentence is required for semantic meaning,
-if we loose track of what a sentence is, its just becomes a large collection of words and the model behaves weird)
-from streaming the data line by line??
+The streaming pipeline performs four primary tasks.
 
+| Component | Responsibility |
+|-----------|----------------|
+| Tokenizer | Standardize raw Wikipedia text |
+| Cleaner | Remove unwanted formatting and punctuation |
+| Phrase Miner | Detect statistically significant bigrams |
+| Vocabulary Builder | Produce a cleaned corpus for later stages |
 
-how the dataset is structured and what are our options ->
-the dataset we are going to use is enwik9,
-each line of this dataset contains about 5-10 complete sentences 
-thus when we run sentence_pattern on a line, we get those many sentences 
+---
 
-* the edge case,
-now assume a sentence does not end in the line
-we hit a \n and the remaining sentence finishes in the next line 
+# Why Streaming?
 
-ideally to handle this case, we need to build a custom buffer, that stores the data of the two lines
-runs the sentence_pattern on them both, glues the sentence and returns the value 
+Earlier versions of the project stored the entire corpus inside Python objects.
 
-but for the simplicity of this version, we are going to just simply ignore the edge cases,
-this feature will be added in future versions 
-the goal of this version is to get the basic data streaming fundamentals 
+```
+Raw Text
 
-so lets try and understand what type of impact it has on the data 
-lets say we have something like
-"The dog died. So\nthe owner got a new puppy!"
-now the line "The dog died. So" will first get streamed 
-the sentence_pattern will return two lists and the clean_text will convert it to all small 
-[['the', 'dog', 'died'], ['so']]
+↓
 
-the next line will be 
-[['the', 'owner', 'got', 'a', 'new', 'puppy']]
-and finally when we stream it into our new file we get 
+List
 
-the dog died
-so
-the owner got a new puppy
+↓
 
-thus no word is deleted, but we do loose the semantic relation between so-the
-this effects our bigram formation as "so" and "the" never really get to be a pair, But most such words never actually do become valid pairs so, the net effect of this edge case is minimal 
+List
 
-* **BiGrams and their challanges**
-the bigram dilemma 
-now as we stated before, the bigram count can reach 50 million if left unchecked, 
-this can cause the RAM to run out of memory 
+↓
 
-now the way bigrams are merged is by using a formula 
-a scoring function, at the end of the unigram and bigram buildup
-we run this formula score(a,b) = (count(a,b) - delta) * total_words/count(a) * count(b)
+List
 
-the count(a,b) is stored in the bigram and the count(a),count(b) in the unigram 
+↓
 
-if this score value is above a certain thershold, we merge the words into a new word,
-eventually the bigram hash map is discarded and only the new unigram hasmap exists with the count of the new formed words 
+RAM
+```
 
-now again, the ideal case for this will be, we get the bigram and unigram loaded into the ram
-so we know the count of every count(a,b) possible.
-but again we are constrained by memory 
-so we use a trick, now this data set will roughly produce around 50 million bigrams 
-so everytime the bigram reaches 25 million slot capacity (this was later reduced to 15 million because my laptop crashed)
-we run a small cleaning job on it, now its pretty evident that most bigrams wont make any sense 
-things like 'so-the' will never be words
-things like new-york and san-fransico will be,
-so the bet is, at this mark of 25 million, we have new-york come atleast 2-4 times,
-we clear out all the bigrams the have count = 1, this cleans a massive amount of space and also hopefully is enough 
-context length to let words that actually need to be merged appear enough amount of times 
+This approach worked well for small datasets containing only a few million words.
 
-Now, we do this merging phase multiple times, for words such as new_york_times to form, we need atleast two passes
-1. new york times -> new_york times
-2. new_york times -> new_york_times
+However, scaling to Wikipedia-sized corpora revealed several bottlenecks.
 
-because the word 'new' and 'york' appear more frequently in text than new_york_times 
-a lower threshold value is required for the second merge ,
-thus we just send a list of threshold values such as 
-[100,50,25], into our scoring function 
+| Problem | Consequence |
+|----------|-------------|
+| Entire corpus stored in memory | Extremely high RAM usage |
+| Millions of unique bigrams | Dictionary explosion |
+| Large temporary structures | Frequent MemoryError exceptions |
 
+The solution was to redesign the pipeline around sequential disk streaming.
 
+Instead of
+
+```
+Dataset
+
+↓
+
+RAM
+
+↓
+
+Processing
+```
+
+the architecture became
+
+```
+Dataset
+
+↓
+
+RAM (Temporary Workspace)
+
+↓
+
+Output File
+```
+
+Memory is now treated as a temporary processing buffer rather than long-term storage.
+
+---
+
+# Pipeline Architecture
+
+```
+Raw Wikipedia Dump
+        │
+        ▼
+Tokenizer
+        │
+        ▼
+Cleaner
+        │
+        ▼
+Sentence Extraction
+        │
+        ▼
+Phrase Mining
+        │
+        ▼
+Vocabulary Construction
+        │
+        ▼
+Training Corpus
+```
+
+Every component performs exactly one transformation before passing the data to the next stage.
+
+---
+
+# Tokenization
+
+The tokenizer is responsible for converting noisy Wikipedia markup into a consistent sequence of tokens.
+
+Its responsibilities include
+
+- Lowercasing
+- Removing HTML artifacts
+- Removing punctuation
+- Normalizing whitespace
+- Producing consistent word boundaries
+
+The output is a standardized corpus suitable for statistical processing.
+
+---
+
+# Phrase Mining
+
+Rather than treating every token independently, Word2Vec improves embedding quality by identifying common multi-word expressions.
+
+Examples include
+
+```
+new york
+
+machine learning
+
+artificial intelligence
+
+san francisco
+```
+
+These phrases are merged into single vocabulary entries.
+
+```
+new york
+
+↓
+
+new_york
+```
+
+This allows the model to learn semantic representations for complete concepts instead of individual words.
+
+Phrase detection is performed over multiple passes using Mikolov's statistical scoring function.
+
+---
+
+# Engineering Challenge — Memory Explosion
+
+The largest engineering challenge during preprocessing was phrase mining.
+
+A corpus containing more than **150 million words** can generate **tens of millions of unique bigrams**.
+
+```
+(word1, word2)
+
+↓
+
+Dictionary
+
+↓
+
+50+ million entries
+```
+
+A naïve implementation rapidly consumes all available memory.
+
+---
+
+# Solution — Periodic Dictionary Cleanup
+
+Instead of allowing the dictionary to grow indefinitely, the pipeline periodically performs a cleanup pass.
+
+Whenever the bigram table reaches a predefined capacity:
+
+```
+Bigram Count
+
+↓
+
+15 Million Entries
+
+↓
+
+Cleanup
+
+↓
+
+Remove Frequency = 1
+
+↓
+
+Continue Streaming
+```
+
+Most one-off bigrams represent statistical noise and are extremely unlikely to survive phrase scoring.
+
+Removing them early dramatically reduces memory usage while preserving meaningful phrase candidates.
+
+---
+
+# Engineering Challenge — Sentence Boundaries
+
+Streaming introduces another subtle problem.
+
+```
+One Line
+
+≠
+
+One Sentence
+```
+
+Wikipedia lines frequently contain multiple complete sentences.
+
+Even more challenging, a sentence may begin on one line and finish on the next.
+
+For example,
+
+```
+The dog died. So
+the owner got a new puppy.
+```
+
+Ideally, the pipeline would maintain a rolling buffer capable of reconstructing sentences spanning multiple lines.
+
+For simplicity, the current implementation intentionally ignores this edge case.
+
+Although this occasionally breaks semantic continuity between adjacent lines, no words are lost, and the impact on phrase quality is minimal.
+
+Support for buffered sentence reconstruction is planned for a future release.
+
+---
+
+# Multi-Pass Phrase Detection
+
+Some phrases require multiple iterations before they can emerge.
+
+Consider
+
+```
+new york times
+```
+
+Pass One
+
+```
+new york
+
+↓
+
+new_york
+```
+
+Pass Two
+
+```
+new_york times
+
+↓
+
+new_york_times
+```
+
+Because phrase frequencies decrease as phrases become longer, later passes operate with progressively lower scoring thresholds.
+
+Example:
+
+```
+[100, 50, 25]
+```
+
+This allows increasingly specific phrases to be discovered.
+
+---
+
+# Design Decisions
+
+| Decision | Benefit |
+|-----------|---------|
+| Streaming I/O | Constant memory usage |
+| Temporary files | Avoids loading corpus into RAM |
+| Multi-pass phrase mining | Detects hierarchical phrases |
+| Periodic cleanup | Prevents dictionary explosion |
+| Sequential processing | Scales to very large corpora |
+
+---
+
+# Key Takeaways
+
+The streaming pipeline transforms raw Wikipedia text into a clean, phrase-aware training corpus while maintaining nearly constant memory usage.
+
+By replacing in-memory processing with sequential streaming, the preprocessing stage scales from small experimental datasets to corpora containing hundreds of millions of tokens without exhausting system resources.

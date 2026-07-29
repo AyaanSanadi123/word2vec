@@ -1,56 +1,421 @@
-* **phase-3 : The C-Engine & Training Architecture**
+# Phase 3 — The C Training Engine
 
-* **Overview and Objectives:**
-Once Python has preprocessed the text corpus, built the unigram tables, and initialized our memory-aligned weight matrices, execution is handed off to maths_engine.c.
+> *The computational heart of the Word2Vec implementation.*
 
-This component serves as the computational core of the model. It handles streaming token traversal, dynamic sliding window generation, negative sampling, and stochastic gradient descent (SGD) updates at maximum CPU speed.
+Once the preprocessing pipeline has cleaned the corpus, constructed the vocabulary, generated the unigram table, and initialized the embedding matrices, control is transferred from Python to the C training engine.
 
-* Overall File Structure and loop hierarchy
-To process 100+ million tokens efficiently, the train_epoch function relies on a nested loop structure. Let's break down how the loops are layered from the outside in:
-1.The Parallel Arena (#pragma omp parallel): Spawns our worker threads, ensuring each gets its own private workspace.
+This module is responsible for the entire optimization process. It performs **Skip-Gram with Negative Sampling (SGNS)** training directly on the embedding matrices using highly optimized C code and OpenMP parallelism.
 
-2.The Corpus Loop (for (int i = 0; i < corpus_len; i++)): Distributed statically across the CPU threads via OpenMP. It steps through the flat integer corpus token by token.
+Unlike the earlier Python stages—which focus on preparing data—this engine is designed for one purpose: **executing billions of floating-point operations as efficiently as possible.**
 
-3.The Direction Loop (for (int direction = -1; direction <= 1; direction += 2)): Evaluates both the left and right context of the center word.
+---
 
-4.The Window Step Loop (for (int step = 1; step <= dynamic_window; step++)): Dynamically scales out to the randomized window boundary.
+# Responsibilities
 
-5.The Negative Sampling Loop (for (int n = 0; n <= num_negatives; n++)): Executes $1$ positive sample and $K$ negative samples ($n=0$ is the true context word; $n > 0$ pulls random words from the unigram table).
+The C engine performs the following tasks during every training epoch:
 
-6.The Embedding Dimension Loop (for (int d = 0; d < embed_size; d++)): Iterates across the vector dimensions (e.g., $300$) to calculate dot products, sigmoids, and vector updates.
+- Stream through the integer corpus
+- Generate dynamic context windows
+- Construct positive and negative training samples
+- Compute forward passes
+- Calculate gradients
+- Perform backpropagation
+- Update embedding vectors
+- Decay the learning rate
+- Track training progress
 
-* **Function Parameters & State Tracking:**
-The train_epoch function accepts the flattened data pointers and tracking variables needed to execute a single pass over the dataset
-Tracking Progress and Rate Decay (epoch_pairs_processed)
-The Problem: Tracking every single word pair globally across multiple threads introduces heavy lock contention.
+Every optimization described in the previous phases ultimately exists to make this stage execute as quickly as possible.
 
-The Solution: We maintain a thread-local counter (local_word_count). Every 10,000 words, the thread uses a lightweight atomic update to sync with a shared epoch counter
+---
 
-* **Vector Updates & Private Gradient Buffers :**(local_target_update)
-When updating weights during SGD, a center word interacts with multiple context and negative words within a single window step. If we modified the target matrix directly during the negative sampling loop, we would create mathematical conflicts.
+# High-Level Architecture
 
-The Private Workspace: At the start of each thread, we allocate a private gradient buffer:
+```
+              Python Pipeline
+                     │
+                     ▼
+        Integer Corpus (word IDs)
+                     │
+                     ▼
+         ┌──────────────────────┐
+         │   train_epoch()      │
+         └──────────────────────┘
+                     │
+                     ▼
+        Parallel OpenMP Workers
+                     │
+                     ▼
+      Dynamic Context Generation
+                     │
+                     ▼
+      Skip-Gram Training Pairs
+                     │
+                     ▼
+       Negative Sampling (SGNS)
+                     │
+                     ▼
+      Gradient Computation
+                     │
+                     ▼
+      Weight Matrix Updates
+```
 
+---
 
-float *local_target_update = (float *)malloc(embed_size * sizeof(float));
-Accumulation: As we loop through the positive and negative samples, gradients are accumulated safely inside this private buffer:
+# The Training Loop
 
+The entire training process is driven by a single function:
 
-local_target_update[d] += gradient * u_context[d];
-The Commit: Once all negative samples for that word pair are processed, the accumulated gradients are written to the target vector all at once:
+```c
+train_epoch(...)
+```
 
+Although it appears to be one function, it is actually composed of several nested loops, each responsible for a different level of the Word2Vec algorithm.
 
-float *v_target = &target_matrix[word_id * embed_size];
-for (int d = 0; d < embed_size; d++) {
-    v_target[d] += local_target_update[d];
-}
+The hierarchy looks like this:
 
-***Thread-Safe Entropy: The Seed Initialization Line:**
-One of the most critical lines in the multi-threaded engine ensures that threads do not repeat identical random sequences across epochs:
+```
+Epoch
+│
+├── Parallel Region
+│
+├── Corpus Loop
+│   │
+│   ├── Left Context
+│   ├── Right Context
+│   │
+│   ├── Dynamic Window
+│   │
+│   ├── Positive Sample
+│   ├── Negative Samples
+│   │
+│   └── Embedding Dimension
+```
 
+Each successive loop increases the level of detail until individual floating-point values inside the embedding vectors are updated.
 
-unsigned long long local_random = (unsigned long long)omp_get_thread_num() * 25214903917ULL + 11 + (unsigned long long)starting_global_pairs;
-omp_get_thread_num(): Guarantees that Thread 0, Thread 1, and Thread 7 start with distinct foundational seeds.
+---
 
-+ (unsigned long long)starting_global_pairs: Solves the "Epoch Groundhog Day" bug. Because starting_global_pairs increases every epoch, the starting seed shifts every time a new epoch begins. This forces the PRNG to generate a fresh, diverse stream of negative samples and dynamic window sizes instead of overfitting to the same random choices across the epochs.
+# Loop Hierarchy
 
+## 1. Parallel Region
+
+```c
+#pragma omp parallel
+```
+
+The outermost layer creates a pool of worker threads using OpenMP.
+
+Each thread receives:
+
+- its own random number generator
+- a private gradient buffer
+- a private progress counter
+
+The embedding matrices remain shared between all threads.
+
+---
+
+## 2. Corpus Traversal
+
+```c
+for (int i = 0; i < corpus_len; i++)
+```
+
+Each worker processes a portion of the flattened integer corpus.
+
+Rather than storing strings, every token has already been converted into an integer ID.
+
+```
+[34, 192, 8, 51, ...]
+```
+
+Processing integers instead of strings dramatically improves cache locality and memory bandwidth. We use -1 as end of sentence marker
+
+---
+
+## 3. Context Direction
+
+```c
+for (direction = -1; direction <= 1; direction += 2)
+```
+
+For every target word, the engine searches both sides of the context window.
+
+```
+left context
+
+target
+
+right context
+```
+
+This produces Skip-Gram training pairs from both directions.
+
+---
+
+## 4. Dynamic Window
+
+```c
+for (step = 1; step <= dynamic_window; step++)
+```
+
+Instead of using a fixed context size, Word2Vec randomly samples the effective window size.
+
+Example:
+
+```
+Maximum Window = 5
+
+Possible windows
+
+1
+2
+3
+4
+5
+```
+
+This randomness improves the diversity of training pairs and reduces overfitting to fixed context distances.
+
+---
+
+## 5. Negative Sampling
+
+```c
+for (n = 0; n <= K; n++)
+```
+
+Every Skip-Gram pair generates:
+
+- **1 positive sample**
+- **K negative samples**
+
+```
+Target
+
+↓
+
+Positive Context
+
+↓
+
+Negative Word 1
+
+↓
+
+Negative Word 2
+
+↓
+
+...
+
+↓
+
+Negative Word K
+```
+
+The first iteration (`n = 0`) always represents the true context word.
+
+Subsequent iterations sample random words from the unigram table.
+
+---
+
+## 6. Embedding Dimension
+
+Finally,
+
+```c
+for (d = 0; d < embed_size; d++)
+```
+
+iterates across every component of the embedding vector.
+
+For a 300-dimensional model,
+
+```
+v =
+
+[0]
+[1]
+[2]
+
+...
+
+[299]
+```
+
+Each element contributes to
+
+- dot products
+- sigmoid computation
+- gradient calculation
+- parameter updates
+
+---
+
+# Progress Tracking
+
+Training can process **billions of word pairs**.
+
+Updating a shared counter after every pair would require continuous atomic synchronization between threads.
+
+Instead, every thread maintains a private counter.
+
+```
+Thread
+
+↓
+
+local_word_count
+
+↓
+
+10,000 updates accumulated
+
+↓
+
+Atomic synchronization
+
+↓
+
+Global counter
+```
+
+Only after processing **10,000 words** does a thread update the shared progress counter.
+
+This greatly reduces synchronization overhead while still providing accurate learning-rate decay. :contentReference[oaicite:0]{index=0}
+
+---
+
+# Gradient Accumulation
+
+One of the most important implementation details is the use of **thread-private gradient buffers**.
+
+Suppose a target word has
+
+```
+1 positive sample
+
++
+
+5 negative samples
+```
+
+Every sample contributes part of the gradient.
+
+Instead of immediately modifying the embedding vector after every sample,
+
+the gradients are accumulated inside a temporary workspace.
+
+```c
+float *local_target_update;
+```
+
+Conceptually,
+
+```
+Positive Sample
+
+↓
+
+Gradient
+
+↓
+
+Negative 1
+
+↓
+
+Gradient
+
+↓
+
+Negative 2
+
+↓
+
+Gradient
+
+↓
+
+...
+
+↓
+
+Accumulated Update
+```
+
+Only after every sample has been processed is the update applied to the target vector.
+
+```c
+v_target += local_target_update;
+```
+
+This ensures the update is mathematically correct while avoiding conflicts between intermediate computations. :contentReference[oaicite:1]{index=1}
+
+---
+
+# Random Number Generation
+
+Randomness plays a central role in Word2Vec.
+
+It determines
+
+- dynamic window sizes
+- negative samples
+
+Using a single global random generator would introduce race conditions and cause every thread to generate identical sequences.
+
+To avoid this, each thread initializes its own private random state.
+
+```c
+unsigned long long local_random = ...
+```
+
+The seed combines
+
+- the OpenMP thread ID
+- the current epoch progress
+
+This guarantees that
+
+- every thread explores a different random sequence
+- every epoch begins with fresh entropy
+
+Without this mechanism, every epoch would repeatedly generate identical negative samples, reducing the diversity of optimization and hurting convergence. :contentReference[oaicite:2]{index=2}
+
+---
+
+# Design Decisions
+
+Several engineering choices were made to maximize throughput.
+
+| Design Choice | Benefit |
+|--------------|---------|
+| Integer corpus | Eliminates string processing |
+| Dynamic context window | Improves training diversity |
+| Negative sampling | Reduces computational complexity |
+| Private gradient buffers | Prevents intermediate update conflicts |
+| Thread-local RNG | Independent randomness across threads |
+| Batched progress synchronization | Minimizes atomic operations |
+| Shared embedding matrices | Enables lock-free training |
+
+---
+
+# Key Takeaways
+
+The C engine is responsible for transforming a static corpus into meaningful word embeddings through billions of repeated optimization steps.
+
+Its performance comes not from a single optimization, but from the combination of several carefully engineered design decisions:
+
+- Efficient integer-based corpus traversal
+- Cache-friendly contiguous memory
+- Dynamic Skip-Gram context generation
+- Negative sampling
+- Thread-private workspaces
+- Lock-free parallel execution
+- Batched synchronization
+- Independent random number generation
+
+Together, these optimizations allow the engine to train large Word2Vec models efficiently while maintaining the mathematical behavior described in Mikolov et al.'s original implementation.
