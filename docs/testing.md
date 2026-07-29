@@ -85,15 +85,9 @@ This prevents artificially lowering the reported accuracy due to out-of-vocabula
 
 The core Word2Vec analogy equation is computed.
 
-\[
-\boxed{
-vec{B}
--
-vec{A}
-+
-vec{C}
-}
-\]
+
+
+vec{B}-vec{A}+vec{C}
 
 For example,
 
