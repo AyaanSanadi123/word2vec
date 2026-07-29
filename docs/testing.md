@@ -32,9 +32,9 @@ king : man :: queen : woman
 
 becomes
 
-\[
-\vec{man} - \vec{king} + \vec{queen}
-\]
+
+vec{man} - vec{king} + vec{queen}
+
 
 and the nearest vector should correspond to
 
